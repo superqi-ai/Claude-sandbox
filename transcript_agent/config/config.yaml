@@ -29,7 +29,7 @@ associates:
   - name: "Ally Arnold"
 
 claude:
-  model: "claude-opus-4-6"
+  model: "claude-haiku-4-5-20251001"
   max_tokens: 4096
   # The analysis prompt. Use {transcript_text} as the placeholder
   # for where the transcript will be injected.
