@@ -114,8 +114,10 @@ class PortalScraper:
         page.fill(self.SEL_2FA_INPUT, code)
         page.click(self.SEL_SUBMIT_BTN)
 
-        # Wait until we're actually logged in (URL changes or dashboard loads)
-        page.wait_for_url("**/calls**", timeout=20_000)
+        # Portal redirects to home after 2FA — wait for navigation then go to /calls
+        page.wait_for_load_state("networkidle", timeout=20_000)
+        if "/calls" not in page.url:
+            page.goto(self.portal_url, wait_until="networkidle")
         logger.info("Login successful.")
 
     def _apply_filters(self, page) -> None:
