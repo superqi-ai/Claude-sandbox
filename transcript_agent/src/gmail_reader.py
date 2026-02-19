@@ -125,7 +125,7 @@ class GmailReader:
         )
         return result.get("messages", [])
 
-    def _extract_code_from_message(self, service, message_id: str) -> str | None:
+    def _extract_code_from_message(self, service, message_id: str) -> "str | None":
         """
         Fetch the full message and extract the 2FA code.
         Looks for a 4–8 digit number in the email body.
