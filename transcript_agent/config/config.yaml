@@ -25,11 +25,8 @@ gmail:
 
 associates:
   - name: "Alva Guerrero"
-    notion_database_id: "30cf4cc4627f80bca744f20a84fafc45"
   - name: "Louise Zeng"
-    notion_database_id: "30cf4cc4627f804d8ce7f1fe5b98d110"
   - name: "Ally Arnold"
-    notion_database_id: "30cf4cc4627f80d094c5da31bf9eeea2"
 
 claude:
   model: "claude-opus-4-6"
@@ -100,14 +97,12 @@ claude:
     {transcript_text}
 
 notion:
-  # The version of the Notion API to use
   api_version: "2022-06-28"
-  # Schema of the database row that will be inserted each week.
-  # Keys are the Notion property names; values are the property types.
-  # Adjust to match your actual Notion database columns.
+  # Single shared database for all associates
+  database_id: "30ceeb2064618054981dc6d31ea18388"
   database_properties:
     Week: date                    # ISO date of the Monday the job ran
-    Associate: title              # Associate name (used as row title)
+    Care Ops: title               # Associate name (row title)
     Calls Analyzed: number        # Number of transcripts analyzed
     Key Opportunities: rich_text  # Claude's analysis summary
     Raw Analysis: rich_text       # Full Claude response
