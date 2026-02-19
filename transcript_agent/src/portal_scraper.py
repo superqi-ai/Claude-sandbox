@@ -87,11 +87,18 @@ class PortalScraper:
 
         code = self.gmail_reader.fetch_two_fa_code(timeout=self.two_fa_timeout)
         logger.info("Got 2FA code, submitting…")
-        page.fill(self.SEL_2FA_INPUT, code)
+        # OTP inputs need real keystrokes — fill() doesn't trigger the component correctly
+        page.locator(self.SEL_2FA_INPUT).click()
+        page.keyboard.type(code)
         page.click(self.SEL_SUBMIT_BTN)
 
-        # Portal redirects to home after 2FA — navigate to /calls
-        page.wait_for_load_state("networkidle", timeout=20_000)
+        # Wait until we've actually left the 2FA page
+        page.wait_for_function(
+            "() => !window.location.pathname.includes('verify-2fa')",
+            timeout=30_000,
+        )
+        logger.info("2FA accepted, now at: %s", page.url)
+
         if "/calls" not in page.url:
             page.goto(self.portal_url, wait_until="networkidle")
         logger.info("Login successful.")
