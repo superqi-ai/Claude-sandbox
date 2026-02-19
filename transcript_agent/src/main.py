@@ -17,6 +17,8 @@ Or it is triggered automatically by the GitHub Actions workflow
 every Monday at 8:00 AM ET.
 """
 
+import argparse
+import json
 import logging
 import os
 import shutil
@@ -29,7 +31,7 @@ from dotenv import load_dotenv
 from src.gmail_reader       import GmailReader
 from src.portal_scraper     import PortalScraper
 from src.transcript_parser  import TranscriptParser
-from src.claude_analyzer    import ClaudeAnalyzer
+from src.claude_analyzer    import ClaudeAnalyzer, AssociateAnalysis
 from src.notion_writer      import NotionWriter
 
 # ------------------------------------------------------------------ #
@@ -51,8 +53,19 @@ logger = logging.getLogger("main")
 # Entry point                                                          #
 # ------------------------------------------------------------------ #
 
+_CACHE_FILE_NAME = "last_analysis.json"
+
+
 def run() -> None:
     """Execute the full weekly pipeline."""
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--notion-only",
+        action="store_true",
+        help="Skip download and Claude analysis; re-push the cached results to Notion.",
+    )
+    args = parser.parse_args()
 
     # --- Load environment variables from .env (local runs only) ---
     load_dotenv()
@@ -63,9 +76,19 @@ def run() -> None:
     with open(config_path) as fh:
         config = yaml.safe_load(fh)
 
-    # --- Prepare downloads directory ---
+    # --- Prepare directories ---
     download_dir = Path(__file__).parent.parent / config["downloads"]["directory"]
     download_dir.mkdir(exist_ok=True)
+    cache_dir = Path(__file__).parent.parent / "cache"
+    cache_dir.mkdir(exist_ok=True)
+    cache_file = cache_dir / _CACHE_FILE_NAME
+
+    # ---- Shortcut: skip to Notion write using cached analysis ----
+    if args.notion_only:
+        logger.info("--notion-only mode: loading cached analysis from %s", cache_file)
+        analyses = _load_cache(cache_file)
+        _write_to_notion(config, analyses)
+        return
 
     # ---- Step 1 & 2: Login + download ----
     logger.info("=" * 60)
@@ -111,18 +134,10 @@ def run() -> None:
         sys.exit(1)
 
     logger.info("Analysis complete for %d associate(s).", len(analyses))
+    _save_cache(analyses, cache_file)
 
     # ---- Step 5: Write to Notion ----
-    logger.info("=" * 60)
-    logger.info("STEP 4/4  Writing results to Notion…")
-    logger.info("=" * 60)
-
-    writer = NotionWriter(config)
-    try:
-        writer.write_results(analyses)
-    except Exception as exc:
-        logger.exception("Notion write failed: %s", exc)
-        sys.exit(1)
+    _write_to_notion(config, analyses)
 
     # ---- Cleanup ----
     if not config["downloads"]["keep_after_processing"]:
@@ -133,6 +148,40 @@ def run() -> None:
     logger.info("=" * 60)
     logger.info("Pipeline complete. All results written to Notion.")
     logger.info("=" * 60)
+
+
+def _write_to_notion(config: dict, analyses: list) -> None:
+    logger.info("=" * 60)
+    logger.info("STEP 4/4  Writing results to Notion…")
+    logger.info("=" * 60)
+    writer = NotionWriter(config)
+    try:
+        writer.write_results(analyses)
+    except Exception as exc:
+        logger.exception("Notion write failed: %s", exc)
+        sys.exit(1)
+
+
+def _save_cache(analyses: list, cache_file: Path) -> None:
+    data = [
+        {
+            "associate_name":    a.associate_name,
+            "call_count":        a.call_count,
+            "analysis":          a.analysis,
+            "key_opportunities": a.key_opportunities,
+        }
+        for a in analyses
+    ]
+    cache_file.write_text(json.dumps(data, indent=2))
+    logger.info("Analysis cached to %s", cache_file)
+
+
+def _load_cache(cache_file: Path) -> list:
+    if not cache_file.exists():
+        logger.error("No cache file found at %s — run without --notion-only first.", cache_file)
+        sys.exit(1)
+    data = json.loads(cache_file.read_text())
+    return [AssociateAnalysis(**item) for item in data]
 
 
 def _check_env_vars() -> None:

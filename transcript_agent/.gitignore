@@ -6,6 +6,9 @@ config/gmail_token.json
 # Downloaded transcripts (temporary, cleaned up after each run)
 downloads/
 
+# Cached Claude analysis results (may contain PII)
+cache/
+
 # Python
 __pycache__/
 *.pyc
