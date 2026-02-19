@@ -136,10 +136,10 @@ class NotionWriter:
                 "title": [{"text": {"content": analysis.associate_name}}]
             },
             "Week": {
-                "date": {"start": week_date.isoformat()}
+                "rich_text": [{"text": {"content": week_date.isoformat()}}]
             },
             "Calls Analyzed": {
-                "number": analysis.call_count
+                "rich_text": [{"text": {"content": str(analysis.call_count)}}]
             },
             "Key Opportunities": {
                 "rich_text": [{"text": {"content": key_ops}}]
@@ -148,7 +148,7 @@ class NotionWriter:
                 "rich_text": [{"text": {"content": raw_text}}]
             },
             "Run Status": {
-                "select": {"name": "Success"}
+                "status": {"name": "Success"}
             },
         }
 
