@@ -19,7 +19,7 @@ gmail:
   credentials_file: "config/gmail_credentials.json"
   token_file: "config/gmail_token.json"
   # Sender address that Marble Health sends 2FA codes from
-  two_fa_sender: "qi@marblehealth.com"
+  two_fa_sender: "hello@marblehealth.com"
   # How long to wait (seconds) for the 2FA email to arrive
   two_fa_timeout_seconds: 60
 
