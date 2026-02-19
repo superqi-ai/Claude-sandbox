@@ -19,19 +19,17 @@ gmail:
   credentials_file: "config/gmail_credentials.json"
   token_file: "config/gmail_token.json"
   # Sender address that Marble Health sends 2FA codes from
-  two_fa_sender: "noreply@marblehealth.com"   # adjust if different
+  two_fa_sender: "qi@marblehealth.com"
   # How long to wait (seconds) for the 2FA email to arrive
   two_fa_timeout_seconds: 60
 
 associates:
-  # Add the full names of the 3 care operations associates exactly
-  # as they appear in the transcripts.
-  - name: "Associate Name 1"
-    notion_database_id: "NOTION_DATABASE_ID_1"   # 32-char Notion DB ID
-  - name: "Associate Name 2"
-    notion_database_id: "NOTION_DATABASE_ID_2"
-  - name: "Associate Name 3"
-    notion_database_id: "NOTION_DATABASE_ID_3"
+  - name: "Alva Guerrero"
+    notion_database_id: "30cf4cc4627f80bca744f20a84fafc45"
+  - name: "Louise Zeng"
+    notion_database_id: "30cf4cc4627f804d8ce7f1fe5b98d110"
+  - name: "Ally Arnold"
+    notion_database_id: "30cf4cc4627f80d094c5da31bf9eeea2"
 
 claude:
   model: "claude-opus-4-6"
@@ -39,19 +37,64 @@ claude:
   # The analysis prompt. Use {transcript_text} as the placeholder
   # for where the transcript will be injected.
   analysis_prompt: |
-    You are a quality assurance coach reviewing care operations call transcripts.
-    Analyze the following call transcript and identify specific opportunities
-    for improvement. Focus on:
-    1. Communication clarity and empathy
-    2. Intake process adherence
-    3. Patient/caller engagement and rapport
-    4. Any missed follow-up opportunities
-    5. Overall call effectiveness
+    You are a sales coach, coaching a team of care operations associates whose
+    job is to convert referral leads from schools into an intake appointment.
+    Associates may be calling a family to schedule the intake appointment, or to
+    reschedule after the original appointment was cancelled or no-showed.
 
-    For each opportunity, provide:
-    - What happened (quote the relevant part if helpful)
-    - Why it is an opportunity for improvement
-    - A concrete suggestion for how to handle it better next time
+    CALL TYPE DETECTION
+    First, determine which type of call this is:
+    - TYPE A: Scheduling a new intake appointment
+    - TYPE B: Rescheduling after a cancellation or no-show
+    - TYPE C: Missed call / left voicemail
+
+    For TYPE A calls, evaluate on these three dimensions:
+
+    1. SCRIPT ADHERENCE
+    The required scripts are:
+
+    Opening (live answer):
+    "Hi [Parent], this is [Associate]. I'm calling from Marble Health about your
+    child [Student]. [Student]'s school counselor Mr/Ms [Counselor Name] from
+    [School Name] asked that we reach out to you to help get [Student] set up
+    with their first virtual therapy appointment. Can I help set it up together
+    right now over the phone?"
+
+    Voicemail / missed call:
+    "Hi [Parent], this is [Associate] from Marble Health. [Student]'s school
+    counselor Mr/Ms [Counselor Name] asked that we reach out to help schedule
+    their first appointment for virtual therapy. Please use the link I've texted
+    you to schedule an appointment so we can save a spot for them. Let me know
+    if you have any questions!"
+
+    Step 1 — Confirm Insurance + insurance-informed sell:
+    - If insurance is pre-populated:
+      "I see that [Student] has [Plan Name]. Great news, we accept the plan and
+      care is completely free for you!"
+    - If insurance is not on file:
+      "Before I schedule, can I ask what insurance plan [Student] has?"
+      If Medicaid: "Great! We accept [Plan Name] and care is completely free
+      for you."
+
+    NOTE: The script continues beyond Step 1. Score Step 1 adherence on what
+    was provided; note if subsequent steps are not yet defined.
+
+    2. OBJECTION HANDLING
+    Identify any objections the parent raised and evaluate how effectively the
+    associate addressed them. Note missed opportunities to overcome hesitation.
+
+    3. IMPROVEMENT FROM PREVIOUS WEEK
+    If prior-week analysis context is available, note whether the associate has
+    improved on previously flagged areas. If no prior context is available,
+    state that and focus on current-call coaching points.
+
+    OUTPUT FORMAT
+    For each dimension above, provide:
+    - A brief summary of what happened (quote directly where useful)
+    - Specific coaching feedback
+    - One concrete suggestion for next time
+
+    End with an overall rating: Excellent / Good / Needs Improvement
 
     Transcript:
     {transcript_text}
