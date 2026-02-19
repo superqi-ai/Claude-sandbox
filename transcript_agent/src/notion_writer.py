@@ -47,7 +47,7 @@ class NotionWriter:
     # Public API                                                           #
     # ------------------------------------------------------------------ #
 
-    def write_results(self, analyses: list, week_date: date | None = None) -> None:
+    def write_results(self, analyses: list, week_date: "date | None" = None) -> None:
         """
         Insert one Notion database row for each AssociateAnalysis.
 
@@ -79,7 +79,7 @@ class NotionWriter:
     # Internal helpers                                                     #
     # ------------------------------------------------------------------ #
 
-    def _get_database_id(self, name: str) -> str | None:
+    def _get_database_id(self, name: str) -> "str | None":
         associate = self.associates.get(name)
         if not associate:
             return None
