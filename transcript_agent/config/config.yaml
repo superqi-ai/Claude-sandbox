@@ -99,7 +99,7 @@ claude:
 notion:
   api_version: "2022-06-28"
   # Single shared database for all associates
-  database_id: "30ceeb2064618054981dc6d31ea18388"
+  database_id: "30ceeb2064618039a048f18a79b03faf"
   database_properties:
     Week: date                    # ISO date of the Monday the job ran
     Care Ops: title               # Associate name (row title)
