@@ -1,0 +1,77 @@
+# ============================================================
+# Transcript Analysis Agent Configuration
+# ============================================================
+# Credentials and secrets go in .env (never commit that file).
+# Everything else is configured here.
+
+portal:
+  url: "https://app.marblehealth.com/calls"
+  # Credentials: PORTAL_EMAIL and PORTAL_PASSWORD in .env
+
+  # Filters applied when bulk-downloading transcripts
+  filters:
+    date_range_days: 7          # "last 7 days" rolling window
+    call_type: "outbound"
+    intake_status: "pre-intake"
+
+gmail:
+  # Gmail API credentials file (downloaded from Google Cloud Console)
+  credentials_file: "config/gmail_credentials.json"
+  token_file: "config/gmail_token.json"
+  # Sender address that Marble Health sends 2FA codes from
+  two_fa_sender: "noreply@marblehealth.com"   # adjust if different
+  # How long to wait (seconds) for the 2FA email to arrive
+  two_fa_timeout_seconds: 60
+
+associates:
+  # Add the full names of the 3 care operations associates exactly
+  # as they appear in the transcripts.
+  - name: "Associate Name 1"
+    notion_database_id: "NOTION_DATABASE_ID_1"   # 32-char Notion DB ID
+  - name: "Associate Name 2"
+    notion_database_id: "NOTION_DATABASE_ID_2"
+  - name: "Associate Name 3"
+    notion_database_id: "NOTION_DATABASE_ID_3"
+
+claude:
+  model: "claude-opus-4-6"
+  max_tokens: 4096
+  # The analysis prompt. Use {transcript_text} as the placeholder
+  # for where the transcript will be injected.
+  analysis_prompt: |
+    You are a quality assurance coach reviewing care operations call transcripts.
+    Analyze the following call transcript and identify specific opportunities
+    for improvement. Focus on:
+    1. Communication clarity and empathy
+    2. Intake process adherence
+    3. Patient/caller engagement and rapport
+    4. Any missed follow-up opportunities
+    5. Overall call effectiveness
+
+    For each opportunity, provide:
+    - What happened (quote the relevant part if helpful)
+    - Why it is an opportunity for improvement
+    - A concrete suggestion for how to handle it better next time
+
+    Transcript:
+    {transcript_text}
+
+notion:
+  # The version of the Notion API to use
+  api_version: "2022-06-28"
+  # Schema of the database row that will be inserted each week.
+  # Keys are the Notion property names; values are the property types.
+  # Adjust to match your actual Notion database columns.
+  database_properties:
+    Week: date                    # ISO date of the Monday the job ran
+    Associate: title              # Associate name (used as row title)
+    Calls Analyzed: number        # Number of transcripts analyzed
+    Key Opportunities: rich_text  # Claude's analysis summary
+    Raw Analysis: rich_text       # Full Claude response
+    Run Status: select            # "Success" | "Partial" | "Failed"
+
+downloads:
+  # Temporary folder where transcripts are saved before processing
+  directory: "downloads"
+  # Keep downloaded files after processing (useful for debugging)
+  keep_after_processing: false

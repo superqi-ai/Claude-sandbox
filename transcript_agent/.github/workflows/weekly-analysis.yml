@@ -1,0 +1,79 @@
+name: Weekly Transcript Analysis
+
+on:
+  # Runs every Monday at 13:00 UTC (= 8:00 AM ET / 9:00 AM ET in DST)
+  schedule:
+    - cron: "0 13 * * 1"
+
+  # Allow manual trigger from the GitHub Actions tab for testing
+  workflow_dispatch:
+
+jobs:
+  analyze:
+    name: Download, Analyse & Write to Notion
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      # ---------------------------------------------------------------- #
+      # 1. Check out the repository                                       #
+      # ---------------------------------------------------------------- #
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ---------------------------------------------------------------- #
+      # 2. Set up Python                                                  #
+      # ---------------------------------------------------------------- #
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      # ---------------------------------------------------------------- #
+      # 3. Install dependencies                                           #
+      # ---------------------------------------------------------------- #
+      - name: Install Python dependencies
+        working-directory: transcript_agent
+        run: pip install -r requirements.txt
+
+      # ---------------------------------------------------------------- #
+      # 4. Install Playwright browser                                     #
+      # ---------------------------------------------------------------- #
+      - name: Install Playwright Chromium
+        working-directory: transcript_agent
+        run: playwright install chromium --with-deps
+
+      # ---------------------------------------------------------------- #
+      # 5. Restore the Gmail OAuth token from secrets                    #
+      #    (see README for how to generate this token the first time)    #
+      # ---------------------------------------------------------------- #
+      - name: Write Gmail credentials & token from secrets
+        working-directory: transcript_agent
+        run: |
+          mkdir -p config
+          echo '${{ secrets.GMAIL_CREDENTIALS_JSON }}' > config/gmail_credentials.json
+          echo '${{ secrets.GMAIL_TOKEN_JSON }}'       > config/gmail_token.json
+
+      # ---------------------------------------------------------------- #
+      # 6. Run the pipeline                                               #
+      # ---------------------------------------------------------------- #
+      - name: Run transcript analysis pipeline
+        working-directory: transcript_agent
+        env:
+          PORTAL_EMAIL:       ${{ secrets.PORTAL_EMAIL }}
+          PORTAL_PASSWORD:    ${{ secrets.PORTAL_PASSWORD }}
+          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
+          NOTION_API_KEY:     ${{ secrets.NOTION_API_KEY }}
+        run: python -m src.main
+
+      # ---------------------------------------------------------------- #
+      # 7. (Optional) Upload logs as an artifact for debugging            #
+      # ---------------------------------------------------------------- #
+      - name: Upload run logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-logs-${{ github.run_id }}
+          path: transcript_agent/downloads/
+          retention-days: 7
