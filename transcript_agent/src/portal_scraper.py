@@ -72,6 +72,12 @@ class PortalScraper:
 
             try:
                 self._login(page)
+                # DEBUG: save snapshot of /calls page so we can identify selectors
+                _debug_dir = self.download_dir.parent / "downloads" / "inspect"
+                _debug_dir.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(_debug_dir / "calls_page.png"), full_page=True)
+                (_debug_dir / "calls_page.html").write_text(page.content())
+                logger.info("DEBUG snapshot saved to %s", _debug_dir)
                 self._apply_filters(page)
                 files = self._bulk_download(page)
             finally:
