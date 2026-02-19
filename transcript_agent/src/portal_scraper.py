@@ -113,7 +113,23 @@ class PortalScraper:
         )
 
         # --- Open the modal ---
-        page.get_by_role("button", name="Bulk Download Transcripts").click()
+        # Wait for the page to fully render before looking for the button
+        page.wait_for_load_state("networkidle")
+
+        # Save debug snapshot so we can inspect what's on screen
+        _debug_dir = self.download_dir.parent / "downloads" / "inspect"
+        _debug_dir.mkdir(parents=True, exist_ok=True)
+        page.screenshot(path=str(_debug_dir / "calls_page.png"), full_page=True)
+        (_debug_dir / "calls_page.html").write_text(page.content())
+        logger.info("DEBUG snapshot saved to %s", _debug_dir)
+
+        # Try several selector forms for the bulk-download button
+        bulk_btn = page.locator(
+            'button:has-text("Bulk Download"), '
+            'a:has-text("Bulk Download"), '
+            '[role="button"]:has-text("Bulk Download")'
+        ).first
+        bulk_btn.click(timeout=30_000)
         page.wait_for_selector('button:has-text("Download CSV")', timeout=15_000)
         logger.info("Modal open.")
 
