@@ -2,22 +2,13 @@
 portal_scraper.py
 -----------------
 Uses Playwright to log into https://app.marblehealth.com/calls,
-apply the configured filters, and bulk-download transcripts.
-
-The download returns a ZIP or a set of files that land in the
-`downloads/` directory.  The caller is responsible for unzipping
-and parsing them.
-
-Because Marble Health is a homegrown portal, the CSS selectors below
-are best-guess placeholders that you will likely need to tweak after
-inspecting the actual HTML with your browser's DevTools.
+open the "Bulk Download Transcripts" modal, set filters, and
+download a CSV of transcripts for the configured date range.
 """
 
 import os
-import time
 import logging
 import zipfile
-import glob
 from datetime import datetime, timedelta
 from pathlib import Path
 
@@ -27,29 +18,20 @@ logger = logging.getLogger(__name__)
 
 
 class PortalScraper:
-    """Logs into Marble Health portal and downloads transcripts."""
+    """Logs into Marble Health portal and bulk-downloads transcripts as CSV."""
 
-    # ------------------------------------------------------------------ #
-    # Selectors — update these by inspecting the live page in DevTools    #
-    # ------------------------------------------------------------------ #
-    SEL_EMAIL_INPUT       = 'input[type="email"], input[name="email"]'
-    SEL_PASSWORD_INPUT    = 'input[type="password"], input[name="password"]'
-    SEL_SUBMIT_BTN        = 'button[type="submit"]'
-    SEL_2FA_INPUT         = 'input[placeholder*="code"], input[name*="code"], input[name*="otp"]'
-    SEL_CALL_TYPE_FILTER  = '[data-testid="call-type-filter"], select[name="callType"]'
-    SEL_INTAKE_FILTER     = '[data-testid="intake-status-filter"], select[name="intakeStatus"]'
-    SEL_DATE_RANGE_START  = 'input[name="startDate"], [data-testid="date-start"]'
-    SEL_DATE_RANGE_END    = 'input[name="endDate"], [data-testid="date-end"]'
-    SEL_SELECT_ALL        = 'input[type="checkbox"][data-testid="select-all"], th input[type="checkbox"]'
-    SEL_BULK_DOWNLOAD_BTN = 'button:has-text("Download"), button:has-text("Export"), [data-testid="bulk-download"]'
+    SEL_EMAIL_INPUT = 'input[type="email"], input[name="email"]'
+    SEL_PASSWORD_INPUT = 'input[type="password"], input[name="password"]'
+    SEL_SUBMIT_BTN = 'button[type="submit"]'
+    SEL_2FA_INPUT = 'input[data-input-otp="true"], input[name="code"], input[autocomplete="one-time-code"]'
 
     def __init__(self, config: dict, gmail_reader, download_dir: Path):
-        self.portal_url    = config["portal"]["url"]
-        self.email         = os.environ["PORTAL_EMAIL"]
-        self.password      = os.environ["PORTAL_PASSWORD"]
-        self.filters       = config["portal"]["filters"]
-        self.gmail_reader  = gmail_reader
-        self.download_dir  = download_dir
+        self.portal_url     = config["portal"]["url"]
+        self.email          = os.environ["PORTAL_EMAIL"]
+        self.password       = os.environ["PORTAL_PASSWORD"]
+        self.filters        = config["portal"]["filters"]
+        self.gmail_reader   = gmail_reader
+        self.download_dir   = download_dir
         self.two_fa_timeout = config["gmail"]["two_fa_timeout_seconds"]
 
     # ------------------------------------------------------------------ #
@@ -58,9 +40,8 @@ class PortalScraper:
 
     def download_transcripts(self) -> list[Path]:
         """
-        Full flow: login → apply filters → select all → bulk download.
-        Returns a list of Path objects pointing at the downloaded
-        transcript files (plain text, CSV, or extracted from a ZIP).
+        Full flow: login → click Bulk Download → fill modal → Download CSV.
+        Returns a list of Path objects pointing at the downloaded files.
         """
         with sync_playwright() as p:
             browser = p.chromium.launch(
@@ -72,14 +53,7 @@ class PortalScraper:
 
             try:
                 self._login(page)
-                # DEBUG: save snapshot of /calls page so we can identify selectors
-                _debug_dir = self.download_dir.parent / "downloads" / "inspect"
-                _debug_dir.mkdir(parents=True, exist_ok=True)
-                page.screenshot(path=str(_debug_dir / "calls_page.png"), full_page=True)
-                (_debug_dir / "calls_page.html").write_text(page.content())
-                logger.info("DEBUG snapshot saved to %s", _debug_dir)
-                self._apply_filters(page)
-                files = self._bulk_download(page)
+                files = self._bulk_download_via_modal(page)
             finally:
                 context.close()
                 browser.close()
@@ -91,27 +65,23 @@ class PortalScraper:
     # ------------------------------------------------------------------ #
 
     def _login(self, page) -> None:
-        """Navigate to portal and complete email + 2FA login."""
+        """Navigate to portal and complete email + password + 2FA login."""
         logger.info("Navigating to portal: %s", self.portal_url)
         page.goto(self.portal_url, wait_until="networkidle")
 
-        # --- Step 1: email / password ---
         logger.info("Filling in credentials…")
         page.wait_for_selector(self.SEL_EMAIL_INPUT, timeout=15_000)
         page.fill(self.SEL_EMAIL_INPUT, self.email)
 
-        # Some portals show the password field only after you submit email
         if page.is_visible(self.SEL_PASSWORD_INPUT):
             page.fill(self.SEL_PASSWORD_INPUT, self.password)
             page.click(self.SEL_SUBMIT_BTN)
         else:
-            # Click "Next" / "Continue" to reveal the password field
             page.click(self.SEL_SUBMIT_BTN)
             page.wait_for_selector(self.SEL_PASSWORD_INPUT, timeout=10_000)
             page.fill(self.SEL_PASSWORD_INPUT, self.password)
             page.click(self.SEL_SUBMIT_BTN)
 
-        # --- Step 2: 2FA code sent to email ---
         logger.info("Waiting for 2FA email code…")
         page.wait_for_selector(self.SEL_2FA_INPUT, timeout=30_000)
 
@@ -120,98 +90,105 @@ class PortalScraper:
         page.fill(self.SEL_2FA_INPUT, code)
         page.click(self.SEL_SUBMIT_BTN)
 
-        # Portal redirects to home after 2FA — wait for navigation then go to /calls
+        # Portal redirects to home after 2FA — navigate to /calls
         page.wait_for_load_state("networkidle", timeout=20_000)
         if "/calls" not in page.url:
             page.goto(self.portal_url, wait_until="networkidle")
         logger.info("Login successful.")
 
-    def _apply_filters(self, page) -> None:
-        """Set call type, intake status, and date range filters."""
+    def _bulk_download_via_modal(self, page) -> list[Path]:
+        """
+        Click the 'Bulk Download Transcripts' button, fill the modal,
+        and trigger the CSV download.
+        """
         end_date   = datetime.today()
         start_date = end_date - timedelta(days=self.filters["date_range_days"])
 
         logger.info(
-            "Applying filters: call_type=%s, intake_status=%s, date_range=%s → %s",
+            "Opening bulk-download modal (date_range=%s → %s, call_type=%s, intake_status=%s)",
+            start_date.strftime("%m/%d/%Y"),
+            end_date.strftime("%m/%d/%Y"),
             self.filters["call_type"],
             self.filters["intake_status"],
-            start_date.strftime("%Y-%m-%d"),
-            end_date.strftime("%Y-%m-%d"),
         )
 
-        # --- Call type ---
-        self._select_filter(page, self.SEL_CALL_TYPE_FILTER, self.filters["call_type"])
-
-        # --- Intake status ---
-        self._select_filter(page, self.SEL_INTAKE_FILTER, self.filters["intake_status"])
+        # --- Open the modal ---
+        page.get_by_role("button", name="Bulk Download Transcripts").click()
+        page.wait_for_selector('button:has-text("Download CSV")', timeout=15_000)
+        logger.info("Modal open.")
 
         # --- Date range ---
-        self._set_date(page, self.SEL_DATE_RANGE_START, start_date)
-        self._set_date(page, self.SEL_DATE_RANGE_END, end_date)
+        # The modal has two date inputs; find them by their label text
+        self._fill_date_input(page, "Start Date", start_date)
+        self._fill_date_input(page, "End Date", end_date)
 
-        # Wait for the table to refresh
-        page.wait_for_load_state("networkidle")
-        logger.info("Filters applied.")
+        # --- Dropdowns ---
+        call_type     = self.filters.get("call_type", "")
+        intake_status = self.filters.get("intake_status", "")
 
-    def _select_filter(self, page, selector: str, value: str) -> None:
-        """
-        Try to set a filter: works for <select> elements and for
-        custom dropdown components that reveal options on click.
-        """
-        try:
-            el = page.locator(selector).first
-            tag = el.evaluate("el => el.tagName.toLowerCase()")
-            if tag == "select":
-                el.select_option(label=value)
-            else:
-                # Custom dropdown: click to open, then click the matching option
-                el.click()
-                page.locator(f'[role="option"]:has-text("{value}"), li:has-text("{value}")').first.click()
-        except PlaywrightTimeoutError:
-            logger.warning("Could not find filter selector '%s' — skipping.", selector)
+        if call_type:
+            self._select_dropdown(page, "Call Type", call_type)
+        if intake_status:
+            self._select_dropdown(page, "Intake Status", intake_status)
 
-    def _set_date(self, page, selector: str, date: datetime) -> None:
-        """Fill a date input field."""
-        try:
-            page.fill(selector, date.strftime("%Y-%m-%d"))
-        except PlaywrightTimeoutError:
-            logger.warning("Could not find date selector '%s' — skipping.", selector)
+        # --- Trigger download ---
+        logger.info("Clicking Download CSV…")
+        with page.expect_download(timeout=120_000) as dl_info:
+            page.get_by_role("button", name="Download CSV").click()
+        download = dl_info.value
 
-    def _bulk_download(self, page) -> list[Path]:
-        """Select all rows and trigger the bulk download."""
-        logger.info("Selecting all transcripts…")
-        try:
-            page.click(self.SEL_SELECT_ALL)
-        except PlaywrightTimeoutError:
-            raise RuntimeError(
-                "Could not find 'select all' checkbox. "
-                "Check SEL_SELECT_ALL selector in portal_scraper.py."
-            )
-
-        logger.info("Triggering bulk download…")
-        with page.expect_download(timeout=120_000) as download_info:
-            page.click(self.SEL_BULK_DOWNLOAD_BTN)
-        download = download_info.value
-
-        # Save the file to our downloads directory
         dest = self.download_dir / download.suggested_filename
         download.save_as(dest)
         logger.info("Downloaded: %s", dest)
 
-        # If it's a ZIP, extract it
         if dest.suffix.lower() == ".zip":
             return self._extract_zip(dest)
 
         return [dest]
 
+    def _fill_date_input(self, page, label: str, date: datetime) -> None:
+        """Fill a date input identified by its nearby label text."""
+        date_str = date.strftime("%m/%d/%Y")
+        try:
+            # Try Playwright label association first
+            page.get_by_label(label, exact=False).first.fill(date_str)
+        except Exception:
+            # Fallback: find input next to a div/label containing the label text
+            try:
+                page.locator(
+                    f'xpath=//label[contains(text(),"{label}")]/following::input[1]'
+                ).first.fill(date_str)
+            except Exception:
+                logger.warning("Could not fill date input for '%s' — skipping.", label)
+
+    def _select_dropdown(self, page, label: str, value: str) -> None:
+        """
+        Open a custom dropdown identified by its nearby label text and
+        click the option matching `value` (case-insensitive substring).
+        """
+        try:
+            # Click the dropdown trigger near the label
+            trigger = page.locator(
+                f'xpath=//label[contains(translate(text(),"abcdefghijklmnopqrstuvwxyz","ABCDEFGHIJKLMNOPQRSTUVWXYZ"),"{label.upper()}")]/following::button[1]'
+            ).first
+            trigger.click()
+
+            # Click the matching option
+            page.locator(
+                f'[role="option"]:has-text("{value}"), li:has-text("{value}")'
+            ).first.click(timeout=5_000)
+
+            logger.info("Set '%s' → '%s'", label, value)
+        except PlaywrightTimeoutError:
+            logger.warning("Could not set dropdown '%s' to '%s' — skipping.", label, value)
+
     def _extract_zip(self, zip_path: Path) -> list[Path]:
-        """Unzip a downloaded archive and return the extracted file paths."""
+        """Unzip a downloaded archive and return extracted file paths."""
         extract_dir = zip_path.parent / zip_path.stem
         extract_dir.mkdir(exist_ok=True)
         with zipfile.ZipFile(zip_path, "r") as zf:
             zf.extractall(extract_dir)
-        files = list(extract_dir.rglob("*"))
-        files = [f for f in files if f.is_file()]
+        files = [f for f in extract_dir.rglob("*") if f.is_file()]
         logger.info("Extracted %d file(s) from %s", len(files), zip_path.name)
-        zip_path.unlink()  # clean up the zip
+        zip_path.unlink()
         return files

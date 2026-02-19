@@ -11,8 +11,8 @@ portal:
   # Filters applied when bulk-downloading transcripts
   filters:
     date_range_days: 7          # "last 7 days" rolling window
-    call_type: "outbound"
-    intake_status: "pre-intake"
+    call_type: "Outbound"
+    intake_status: "Pre-Intake"
 
 gmail:
   # Gmail API credentials file (downloaded from Google Cloud Console)
