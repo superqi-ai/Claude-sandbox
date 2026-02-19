@@ -147,9 +147,6 @@ class NotionWriter:
             "Raw Analysis": {
                 "rich_text": [{"text": {"content": raw_text}}]
             },
-            "Run Status": {
-                "status": {"name": "Success"}
-            },
         }
 
 
