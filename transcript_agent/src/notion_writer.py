@@ -34,9 +34,10 @@ NOTION_API_BASE = "https://api.notion.com/v1"
 
 class NotionWriter:
     def __init__(self, config: dict):
-        self.api_key     = os.environ["NOTION_API_KEY"]
-        self.api_version = config["notion"]["api_version"]
-        self.associates  = {a["name"]: a for a in config["associates"]}
+        self.api_key        = os.environ["NOTION_API_KEY"]
+        self.api_version    = config["notion"]["api_version"]
+        self.global_db_id   = config["notion"].get("database_id", "")
+        self.associates     = {a["name"]: a for a in config["associates"]}
         self.headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Notion-Version": self.api_version,
@@ -81,9 +82,8 @@ class NotionWriter:
 
     def _get_database_id(self, name: str) -> "str | None":
         associate = self.associates.get(name)
-        if not associate:
-            return None
-        db_id = associate.get("notion_database_id", "")
+        # Per-associate ID takes priority; fall back to the global shared database
+        db_id = (associate or {}).get("notion_database_id", "") or self.global_db_id
         # Strip hyphens in case the user copied the UUID-formatted ID
         return db_id.replace("-", "") or None
 
